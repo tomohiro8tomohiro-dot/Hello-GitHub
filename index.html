@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1020">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <title>Vocab Loop（PWA）</title>
+  <style>
+    :root { --bg:#0b1020; --card:#121a33; --text:#e8eeff; --muted:#a9b3d6; --good:#38d996; --bad:#ff5c7a; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif;
+      background:radial-gradient(1200px 800px at 20% 0%, #1b2a66 0%, var(--bg) 55%); color:var(--text); }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 16px; padding-bottom: 28px; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; }
+    .card { background: rgba(18,26,51,.88); border:1px solid rgba(255,255,255,.08); border-radius: 18px;
+      box-shadow: 0 12px 30px rgba(0,0,0,.25); padding: 14px; }
+    h1 { font-size: 18px; margin:0 0 10px; color: #dbe6ff; letter-spacing: .02em; }
+    .hud { display:flex; gap:10px; flex-wrap:wrap; }
+    .pill { background: rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.08); padding: 10px 12px;
+      border-radius: 14px; font-size: 13px; color: var(--muted); }
+    .pill b { color: var(--text); }
+    .big { font-size: 28px; font-weight: 800; letter-spacing: .02em; }
+    .small { color: var(--muted); font-size: 13px; }
+    .question { display:grid; gap:10px; }
+    .qtop { display:flex; gap:10px; align-items:baseline; justify-content:space-between; }
+    .progress { height: 10px; background: rgba(255,255,255,.08); border-radius: 99px; overflow:hidden; border:1px solid rgba(255,255,255,.08); }
+    .bar { height:100%; width:100%; background: linear-gradient(90deg, rgba(56,217,150,.95), rgba(95,169,255,.9)); transform-origin:left; }
+    .choices { display:grid; grid-template-columns: 1fr; gap:10px; margin-top: 10px; }
+    @media (min-width: 680px) { .choices { grid-template-columns: 1fr 1fr; } }
+
+    button.choice {
+      background: rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.10);
+      color: var(--text);
+      border-radius: 16px;
+      padding: 14px 14px;
+      font-size: 18px;
+      cursor:pointer;
+      text-align:left;
+      transition: transform .06s ease, background .2s ease, border-color .2s ease;
+      user-select:none;
+      min-height: 56px;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    button.choice:hover { transform: translateY(-1px); background: rgba(255,255,255,.085); border-color: rgba(255,255,255,.16); }
+    button.choice:active { transform: translateY(0px) scale(.99); }
+    button.choice[disabled] { opacity:.72; cursor:not-allowed; }
+
+    .flash { border-radius: 16px; padding: 10px 12px; font-size: 13px; display:none; }
+    .flash.good { display:block; background: rgba(56,217,150,.14); border:1px solid rgba(56,217,150,.35); color:#bff7df; }
+    .flash.bad { display:block; background: rgba(255,92,122,.12); border:1px solid rgba(255,92,122,.35); color:#ffd2db; }
+
+    .controls { display:flex; gap:10px; flex-wrap:wrap; margin-top: 10px; }
+    .btn {
+      background: rgba(255,255,255,.08);
+      border:1px solid rgba(255,255,255,.12);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 10px 12px;
+      font-size: 13px;
+      cursor:pointer;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    .btn:hover { background: rgba(255,255,255,.10); }
+
+    .settings { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    input[type="number"], select, input[type="file"] {
+      padding: 9px 10px; border-radius: 12px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.18); color: var(--text);
+      outline:none;
+    }
+    input[type="number"] { width: 96px; }
+    .footer { opacity:.9; margin-top: 10px; }
+    .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: rgba(255,255,255,.08);
+      border:1px solid rgba(255,255,255,.10); padding: 2px 6px; border-radius: 8px; }
+
+    /* 復習パネル */
+    .panel {
+      display:none;
+      margin-top:10px;
+      padding:12px;
+      border-radius: 16px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.18);
+    }
+    .rowlabel{
+      display:flex; gap:10px; align-items:center;
+      padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    .scroll{ max-height: 240px; overflow:auto; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="row">
+      <div class="card" style="flex: 1 1 560px;">
+        <h1>Vocab Loop（PWA）</h1>
+
+        <div class="hud">
+          <div class="pill">スコア: <b id="score">0</b></div>
+          <div class="pill">コンボ: <b id="combo">0</b></div>
+          <div class="pill">正解率: <b id="acc">0%</b></div>
+          <div class="pill">残り: <b id="remaining">0</b></div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="question">
+          <div class="qtop">
+            <div>
+              <div class="small">日本語 → 英語（4択）</div>
+              <div class="big" id="prompt">---</div>
+            </div>
+            <div style="text-align:right">
+              <div class="small">制限時間</div>
+              <div class="big"><span id="time">0.0</span>s</div>
+            </div>
+          </div>
+
+          <div class="progress">
+            <div class="bar" id="bar"></div>
+          </div>
+
+          <div id="flash" class="flash"></div>
+
+          <div class="choices" id="choices"></div>
+
+          <div class="controls">
+            <button class="btn" id="skip">スキップ（復習に回す）</button>
+            <button class="btn" id="restart">リスタート</button>
+          </div>
+
+          <div class="footer small">
+            PC: <span class="kbd">1</span>〜<span class="kbd">4</span>で選択 /
+            <span class="kbd">S</span>でスキップ /
+            <span class="kbd">R</span>でリスタート
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="flex: 1 1 320px;">
+        <h1>設定</h1>
+
+        <div class="settings">
+          <label class="small">1問の時間（秒）</label>
+          <input id="secondsPerQ" type="number" min="1" max="30" step="0.5" value="6" />
+        </div>
+
+        <div style="height:10px"></div>
+
+        <div class="settings">
+          <label class="small">復習のしつこさ</label>
+          <input id="reviewWeight" type="number" min="1" max="10" step="1" value="5" />
+        </div>
+
+        <div style="height:10px"></div>
+
+        <div class="settings">
+          <label class="small">デッキ</label>
+          <select id="deckSelect">
+            <option value="all">全部</option>
+            <option value="2">level=2</option>
+            <option value="3">level=3</option>
+            <option value="23">level=2+3</option>
+          </select>
+        </div>
+        <div class="small" id="deckStatus" style="margin-top:8px;opacity:.9;"></div>
+
+        <hr style="border:none;border-top:1px solid rgba(255,255,255,.10);margin:12px 0;">
+
+        <div class="settings">
+          <label class="small">CSVを読み込み</label>
+          <input id="csvFile" type="file" accept=".csv,text/csv" />
+        </div>
+        <div class="small" id="csvStatus" style="margin-top:8px;opacity:.9;"></div>
+
+        <div style="margin-top:10px" class="small">
+          CSV形式: <span class="kbd">en,ja,level</span>
+        </div>
+
+        <hr style="border:none;border-top:1px solid rgba(255,255,255,.10);margin:12px 0;">
+
+        <h1 style="font-size:16px;margin:0 0 8px;">復習モード</h1>
+
+        <div class="settings">
+          <label class="small">復習モード</label>
+          <select id="reviewMode">
+            <option value="off">OFF</option>
+            <option value="on">ON（選んだ語をループ）</option>
+          </select>
+        </div>
+
+        <div style="height:10px"></div>
+
+        <div class="settings">
+          <label class="small">復習語数</label>
+          <input id="reviewCount" type="number" min="4" max="50" step="1" value="10" />
+        </div>
+
+        <div style="height:10px"></div>
+
+        <div class="settings">
+          <button class="btn" id="pickReview">復習語を選ぶ</button>
+          <button class="btn" id="clearReview">復習をクリア</button>
+        </div>
+
+        <div class="small" id="reviewStatus" style="margin-top:8px;opacity:.9;"></div>
+
+        <div id="reviewPanel" class="panel">
+          <div class="small" style="margin-bottom:8px;">復習したい単語にチェック（最大 <span id="reviewMax">10</span>）</div>
+          <div id="reviewList" class="scroll"></div>
+          <div style="height:10px"></div>
+          <button class="btn" id="saveReview">保存して閉じる</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+<script>
+/* =========================
+   データ（CSVで置き換え可）
+========================= */
+let WORDS_ALL = [
+  { en: "watch out", ja: "気をつけて！", level: 2 },
+  { en: "come over", ja: "遊びに来る", level: 2 },
+  { en: "coincidence", ja: "偶然", level: 3 },
+  { en: "insurance", ja: "保険", level: 3 },
+  { en: "universal", ja: "普遍的な", level: 3 },
+  { en: "a little bit", ja: "ちょっと", level: 2 },
+];
+let WORDS = WORDS_ALL.slice();
+
+/* =========================
+   DOM
+========================= */
+const elScore = document.getElementById("score");
+const elCombo = document.getElementById("combo");
+const elAcc = document.getElementById("acc");
+const elRemaining = document.getElementById("remaining");
+const elPrompt = document.getElementById("prompt");
+const elTime = document.getElementById("time");
+const elBar = document.getElementById("bar");
+const elChoices = document.getElementById("choices");
+const elFlash = document.getElementById("flash");
+
+const elSkip = document.getElementById("skip");
+const elRestart = document.getElementById("restart");
+const elSecondsPerQ = document.getElementById("secondsPerQ");
+const elReviewWeight = document.getElementById("reviewWeight");
+
+const elDeckSelect = document.getElementById("deckSelect");
+const elDeckStatus = document.getElementById("deckStatus");
+
+const elCsvFile = document.getElementById("csvFile");
+const elCsvStatus = document.getElementById("csvStatus");
+
+/* ===== 復習モードDOM ===== */
+const elReviewMode = document.getElementById("reviewMode");
+const elReviewCount = document.getElementById("reviewCount");
+const elPickReview = document.getElementById("pickReview");
+const elClearReview = document.getElementById("clearReview");
+const elReviewStatus = document.getElementById("reviewStatus");
+
+const elReviewPanel = document.getElementById("reviewPanel");
+const elReviewList = document.getElementById("reviewList");
+const elSaveReview = document.getElementById("saveReview");
+const elReviewMax = document.getElementById("reviewMax");
+
+let REVIEW_SET = [];
+
+/* =========================
+   状態
+========================= */
+let deck = [];
+let current = null;
+let locked = false;
+
+let score = 0;
+let combo = 0;
+let correct = 0;
+let answered = 0;
+
+let secondsPerQ = 6;
+let reviewWeight = 5;
+
+let t0 = 0;
+let rafId = null;
+
+/* =========================
+   Utils
+========================= */
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
+function pickN(arr, n, avoidValue) {
+  const pool = arr.filter(x => x !== avoidValue);
+  return shuffle(pool).slice(0, n);
+}
+function beep(type) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = "sine";
+    o.frequency.value = (type === "good") ? 880 : 220;
+    g.gain.value = 0.0001;
+    o.connect(g); g.connect(ctx.destination);
+    o.start();
+    const now = ctx.currentTime;
+    g.gain.exponentialRampToValueAtTime(0.12, now + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+    o.stop(now + 0.18);
+    setTimeout(() => ctx.close(), 250);
+  } catch {}
+}
+function showFlash(kind, text) {
+  elFlash.style.display = "block";
+  elFlash.className = `flash ${kind}`;
+  elFlash.textContent = text;
+}
+function clearChoices(){ elChoices.innerHTML = ""; }
+function setLocked(v){
+  locked = v;
+  [...elChoices.querySelectorAll("button")].forEach(b => b.disabled = v);
+}
+function renderHud() {
+  elScore.textContent = String(score);
+  elCombo.textContent = String(combo);
+  const acc = answered === 0 ? 0 : Math.round((correct / answered) * 100);
+  elAcc.textContent = `${acc}%`;
+  elRemaining.textContent = String(deck.length);
+}
+
+/* =========================
+   デッキ（level）切替
+========================= */
+function applyDeckFilter() {
+  const v = elDeckSelect ? elDeckSelect.value : "all";
+  let allowed = new Set([2,3]);
+  if (v === "2") allowed = new Set([2]);
+  if (v === "3") allowed = new Set([3]);
+  if (v === "23") allowed = new Set([2,3]);
+
+  WORDS = WORDS_ALL
+    .filter(w => allowed.has(Number(w.level ?? 0)))
+    .map(w => ({ en: w.en, ja: w.ja, level: Number(w.level ?? 2) }));
+
+  if (elDeckStatus) {
+    const name = (v === "all") ? "全部" : v;
+    elDeckStatus.textContent = `デッキ: ${name}（${WORDS.length}語）`;
+  }
+}
+
+/* =========================
+   CSV読み込み
+========================= */
+function parseCSV(text) {
+  const lines = text.replace(/\r/g, "").split("\n").filter(l => l.trim().length > 0);
+  if (lines.length < 2) return [];
+
+  const header = lines[0].split(",").map(s => s.trim().toLowerCase());
+  const enIdx = header.indexOf("en");
+  const jaIdx = header.indexOf("ja");
+  const lvIdx = header.indexOf("level");
+  if (enIdx === -1 || jaIdx === -1) throw new Error("CSVの1行目は en,ja,level にしてね");
+
+  const items = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(",");
+    const en = (cols[enIdx] ?? "").trim();
+    const ja = (cols[jaIdx] ?? "").trim();
+    let level = 2;
+    if (lvIdx !== -1) {
+      const n = Number((cols[lvIdx] ?? "").trim());
+      level = Number.isFinite(n) ? n : 2;
+    }
+    if (!en || !ja) continue;
+    items.push({ en, ja, level });
+  }
+  return items;
+}
+
+/* =========================
+   復習モード
+========================= */
+function updateReviewStatus() {
+  const mode = elReviewMode?.value ?? "off";
+  const n = REVIEW_SET.length;
+  if (elReviewStatus) {
+    elReviewStatus.textContent =
+      mode === "on" ? `復習ON: ${n}語をループ中` : `復習OFF: 選択済み ${n}語`;
+  }
+}
+
+function openReviewPicker() {
+  if (!elReviewPanel || !elReviewList) return;
+
+  const max = clamp(parseInt(elReviewCount?.value || "10", 10), 4, 50);
+  if (elReviewMax) elReviewMax.textContent = String(max);
+
+  elReviewList.innerHTML = "";
+  const selected = new Set(REVIEW_SET.map(w => w.en + "||" + w.ja + "||" + w.level));
+
+  WORDS.forEach((w) => {
+    const key = w.en + "||" + w.ja + "||" + w.level;
+
+    const row = document.createElement("label");
+    row.className = "rowlabel";
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = selected.has(key);
+
+    cb.addEventListener("change", () => {
+      const checked = elReviewList.querySelectorAll("input[type=checkbox]:checked").length;
+      if (checked > max) {
+        cb.checked = false;
+        showFlash("bad", `最大${max}語までだよ`);
+      }
+    });
+
+    const txt = document.createElement("div");
+    txt.innerHTML = `<b>${w.ja}</b> <span class="small">→ ${w.en}（Lv${w.level}）</span>`;
+
+    row.appendChild(cb);
+    row.appendChild(txt);
+    elReviewList.appendChild(row);
+  });
+
+  elReviewPanel.style.display = "block";
+}
+
+function saveReviewPicker() {
+  if (!elReviewList) return;
+
+  const max = clamp(parseInt(elReviewCount?.value || "10", 10), 4, 50);
+  const picked = [];
+  const rows = elReviewList.querySelectorAll("label");
+
+  rows.forEach((row, idx) => {
+    const cb = row.querySelector("input[type=checkbox]");
+    if (cb && cb.checked && picked.length < max) picked.push(WORDS[idx]);
+  });
+
+  REVIEW_SET = picked.map(w => ({ ...w }));
+  if (elReviewPanel) elReviewPanel.style.display = "none";
+  updateReviewStatus();
+  resetGame();
+}
+
+function clearReviewSet() {
+  REVIEW_SET = [];
+  updateReviewStatus();
+  resetGame();
+}
+
+/* =========================
+   ゲーム
+========================= */
+function buildChoices(word) {
+  const distractors = pickN(WORDS.map(w => w.en), 3, word.en);
+  return shuffle([word.en, ...distractors]);
+}
+
+function scheduleTimer() {
+  cancelAnimationFrame(rafId);
+  t0 = performance.now();
+  function tick(now) {
+    const elapsed = (now - t0) / 1000;
+    const remain = Math.max(0, secondsPerQ - elapsed);
+    elTime.textContent = remain.toFixed(1);
+    elBar.style.transform = `scaleX(${remain / secondsPerQ})`;
+
+    if (remain <= 0 && !locked) { handleSkip(true); return; }
+    rafId = requestAnimationFrame(tick);
+  }
+  rafId = requestAnimationFrame(tick);
+}
+
+function reinsertWord(word, when) {
+  let idx;
+  if (when === "front") idx = Math.floor(Math.random() * Math.max(1, reviewWeight));
+  else if (when === "mid") idx = Math.floor(deck.length * 0.35 + Math.random() * Math.max(1, deck.length * 0.15));
+  else idx = Math.floor(deck.length * 0.7 + Math.random() * Math.max(1, deck.length * 0.25));
+  idx = clamp(idx, 0, deck.length);
+  if (deck[0] && deck[0].en === word.en) idx = clamp(idx + 1, 0, deck.length);
+  deck.splice(idx, 0, word);
+}
+
+function nextQuestion() {
+  if (deck.length === 0) {
+    clearChoices();
+    elPrompt.textContent = "終了！";
+    elTime.textContent = "0.0";
+    elBar.style.transform = "scaleX(0)";
+    showFlash("good", `おつかれ！ スコア: ${score} / 正解率: ${elAcc.textContent}`);
+    return;
+  }
+
+  current = deck.shift();
+  locked = false;
+
+  elPrompt.textContent = current.ja;
+  clearChoices();
+  elFlash.className = "flash"; elFlash.textContent = ""; elFlash.style.display = "none";
+
+  const options = buildChoices(current);
+  options.forEach((opt, idx) => {
+    const btn = document.createElement("button");
+    btn.className = "choice";
+    btn.innerHTML = `<span class="small">(${idx+1})</span>  <b>${opt}</b>`;
+    btn.addEventListener("click", () => handleAnswer(opt));
+    elChoices.appendChild(btn);
+  });
+
+  renderHud();
+  scheduleTimer();
+}
+
+function handleAnswer(selected) {
+  if (locked) return;
+  setLocked(true);
+  answered++;
+
+  const isCorrect = selected === current.en;
+  if (isCorrect) {
+    correct++; combo++;
+    const remain = parseFloat(elTime.textContent);
+    const gain = Math.round(10 + combo * 2 + remain);
+    score += gain;
+    showFlash("good", `正解！ +${gain}  コンボx${combo}`);
+    beep("good");
+    reinsertWord(current, "back");
+  } else {
+    combo = 0;
+    showFlash("bad", `不正解… 正解は「${current.en}」`);
+    beep("bad");
+    reinsertWord(current, "front");
+  }
+
+  renderHud();
+  setTimeout(() => { setLocked(false); nextQuestion(); }, 520);
+}
+
+function handleSkip(isTimeout=false) {
+  if (locked) return;
+  setLocked(true);
+  combo = 0;
+  answered++;
+  showFlash("bad", isTimeout ? `時間切れ… 正解は「${current.en}」` : `スキップ: 復習に回す（正解: ${current.en}）`);
+  beep("bad");
+  reinsertWord(current, "front");
+  renderHud();
+  setTimeout(() => { setLocked(false); nextQuestion(); }, 420);
+}
+
+function resetGame() {
+  secondsPerQ = clamp(parseFloat(elSecondsPerQ.value || "6"), 1, 30);
+  reviewWeight = clamp(parseInt(elReviewWeight.value || "5", 10), 1, 10);
+
+  score = 0; combo = 0; correct = 0; answered = 0;
+  elFlash.className = "flash"; elFlash.textContent = ""; elFlash.style.display = "none";
+
+  applyDeckFilter();
+
+  let ACTIVE = WORDS;
+  const mode = elReviewMode?.value ?? "off";
+  if (mode === "on" && REVIEW_SET.length >= 4) ACTIVE = REVIEW_SET;
+
+  if (ACTIVE.length < 4) {
+    clearChoices();
+    elPrompt.textContent = "単語が足りない…";
+    showFlash("bad", "4択なので4語以上必要だよ。CSVか復習セットを見直してね。");
+    updateReviewStatus();
+    return;
+  }
+
+  deck = shuffle(ACTIVE).map(w => ({ ...w }));
+  renderHud();
+  nextQuestion();
+  updateReviewStatus();
+}
+
+/* =========================
+   events
+========================= */
+elSkip.addEventListener("click", () => handleSkip(false));
+elRestart.addEventListener("click", resetGame);
+if (elDeckSelect) elDeckSelect.addEventListener("change", resetGame);
+
+if (elPickReview) elPickReview.addEventListener("click", openReviewPicker);
+if (elSaveReview) elSaveReview.addEventListener("click", saveReviewPicker);
+if (elClearReview) elClearReview.addEventListener("click", clearReviewSet);
+if (elReviewMode) elReviewMode.addEventListener("change", () => { updateReviewStatus(); resetGame(); });
+
+if (elCsvFile) {
+  elCsvFile.addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const items = parseCSV(text);
+      if (items.length < 4) throw new Error("4択なので最低4語必要");
+      WORDS_ALL = items;
+      if (elCsvStatus) elCsvStatus.textContent = `読み込み成功！ ${WORDS_ALL.length}語`;
+      REVIEW_SET = []; // CSVが変わったら復習セットもリセット（混乱防止）
+      resetGame();
+    } catch (err) {
+      if (elCsvStatus) elCsvStatus.textContent = `読み込み失敗: ${err.message}`;
+      console.error(err);
+    } finally {
+      e.target.value = "";
+    }
+  });
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "r" || e.key === "R") resetGame();
+  if (e.key === "s" || e.key === "S") handleSkip(false);
+  const n = parseInt(e.key, 10);
+  if (n >= 1 && n <= 4) {
+    const btn = elChoices.querySelectorAll("button")[n - 1];
+    if (btn && !btn.disabled) btn.click();
+  }
+});
+
+// start
+resetGame();
+</script>
+
+<script>
+  // PWA: Service Worker
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./service-worker.js");
+    });
+  }
+</script>
+</body>
+</html>
